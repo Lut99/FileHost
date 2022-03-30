@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "filehost-spc",
+
+    "filehost-srv",
+    "filehost-ctl",
+    "filehost-cli",
+]

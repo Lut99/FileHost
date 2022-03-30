@@ -1,0 +1,8 @@
+[package]
+name = "filehost-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lut99"]
+
+[dependencies]
+filehost-spc = { path = "../filehost-spc" }

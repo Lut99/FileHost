@@ -1,0 +1,3 @@
+# Ignore cargo's target and .lock
+target
+Cargo.lock
