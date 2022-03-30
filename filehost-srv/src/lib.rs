@@ -4,12 +4,12 @@
  * Created:
  *   30 Mar 2022, 19:32:50
  * Last edited:
- *   30 Mar 2022, 20:58:00
+ *   30 Mar 2022, 20:57:23
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Entrypoint to the library part of the FileHost CTL-binary.
+ *   Entrypoint to the library part of the FileHost server.
 **/
 
 // Use the macros from some external crates

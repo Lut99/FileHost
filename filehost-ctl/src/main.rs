@@ -4,12 +4,12 @@
  * Created:
  *   30 Mar 2022, 19:32:15
  * Last edited:
- *   30 Mar 2022, 20:54:15
+ *   30 Mar 2022, 20:58:06
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Entrypoint to the server executable.
+ *   Entrypoint to the CTL executable.
 **/
 
 use std::fs::File;

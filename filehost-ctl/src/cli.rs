@@ -4,12 +4,12 @@
  * Created:
  *   30 Mar 2022, 19:38:01
  * Last edited:
- *   30 Mar 2022, 20:37:12
+ *   30 Mar 2022, 20:57:51
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Module that handles the command-line interface part of the server.
+ *   Module that handles the command-line interface part of the ctl.
 **/
 
 use std::path::PathBuf;
