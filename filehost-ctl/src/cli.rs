@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:38:01
  * Last edited:
- *   30 Mar 2022, 20:57:51
+ *   01 Apr 2022, 12:06:36
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use log::LevelFilter;
+
+use filehost_spc::consts::{DEFAULT_CONFIG_PATH, DEFAULT_SOCKET_PATH};
 
 
 /***** CONSTANTS *****/
@@ -36,12 +37,9 @@ lazy_static! {
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Arguments {
-    /// If given, never writes to systemd/stderr but to the given file instead.
-    #[clap(short, long, help = "If given, does not log to systemd/stderr but to the given file instead.")]
-    pub log_file  : Option<PathBuf>,
-    /// The logging severity to display.
-    #[clap(short = 'v', long = "verbosity", default_value = LevelFilter::Debug.as_str(), help = "The log severity to log.")]
-    pub log_level : LevelFilter,
+    /// If given, displays logs messages to stdout/stderr
+    #[clap(long, help = "If given, displays logs messages to stdout and stderr.")]
+    pub debug : bool,
 
     /// The action to take from this point on (subcommand)
     #[clap(subcommand)]
@@ -53,20 +51,22 @@ pub struct Arguments {
 /// Defines the actions / subcommands that can be done on the server.
 #[derive(Parser)]
 pub enum Action {
-    /// Generates an empty user database.
-    #[clap(name = "generate", about = "Generates a new user database at the given location.")]
-    Generate {
-        /// The path to the userbase to generate.
-        #[clap(short, long, default_value = &DEFAULT_USERBASE_FILE, help = "The location of the new user database file to generate.")]
-        userbase : PathBuf,
-    },
-    /// Generates an empty file database.
-    #[clap(name = "init")]
-    Initialize {
-        /// The path to the userbase to generate.
-        #[clap(default_value = &DEFAULT_DATABASE_DIR, help = "The location of the new database directory to generate.")]
-        database : PathBuf,
+    /// Sets the project up, by downloading the server executable and generating files.
+    #[clap(name = "install", about = "Prepares the server-side by generating the appropriate files and adding the server as a daemon.")]
+    Install {
+        #[clap(short, long, help = "If given, does not download the latest version from GitHub but instead uses the given server exeuctable.")]
+        server_exec : Option<PathBuf>,
+
+        #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The location of the server's configuration file. Note, though, that if you use anything but the default, you will have to specify the location every time you run the server or the CTL via --config-path.")]
+        config_path : PathBuf,
+        #[clap(short, long, default_value = &DEFAULT_SOCKET_PATH, help = "The location of the socket path that the CTL uses to communicate with the server.")]
+        socket_path : PathBuf,
     },
 
-    /// Adds a new user to the given userbase file.
+    /// Tears the project down, by removing the server executable and associated files.
+    #[clap(name = "uninstall", about = "Removes the server installation by removing the server as a daemon and deleting all of its configs.")]
+    Uninstall {
+        #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The config path that contains the server's configuration. You should only use the non-default path if you changed it during installation.")]
+        config_path : PathBuf,
+    },
 }

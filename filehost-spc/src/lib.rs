@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:36:09
  * Last edited:
- *   30 Mar 2022, 19:36:10
+ *   01 Apr 2022, 11:47:57
  * Auto updated?
  *   Yes
  *
@@ -13,4 +13,5 @@
  *   specification of the filehost project.
 **/
 
-
+/// Defines the constants that are shared across the FileHost project.
+pub mod consts;

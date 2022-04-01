@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:57:06
  * Last edited:
- *   31 Mar 2022, 18:28:58
+ *   01 Apr 2022, 11:51:57
  * Auto updated?
  *   Yes
  *
@@ -12,31 +12,16 @@
  *   Implements the CLI-parser for the daemon.
 **/
 
-use std::fmt::{Formatter, Result as FResult};
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use clap::Parser;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
+use filehost_spc::consts::DEFAULT_CONFIG_PATH;
+
 use crate::errors::ConfigError as Error;
-
-
-/***** CONSTANTS *****/
-/// The default config path
-const DEFAULT_CONFIG_PATH: &str = "/etc/filehost/config.json";
-
-/// The default log level to apply
-const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
-/// The default socket path
-const DEFAULT_SOCKET_PATH: &str = "/var/run/filehost.sock";
-/// The default address to listen on
-const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0:7391";
-
-
-
 
 
 /***** ARGUMENTS *****/
