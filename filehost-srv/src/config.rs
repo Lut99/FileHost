@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:57:06
  * Last edited:
- *   01 Apr 2022, 11:51:57
+ *   16 Apr 2022, 13:16:51
  * Auto updated?
  *   Yes
  *
@@ -53,15 +53,28 @@ pub struct Config {
 }
 
 impl Config {
+    /// Constructor for the Config.  
+    /// Will read the config file to load from the CLI.
+    /// 
+    /// # Returns
+    /// The new Config instance on success, or an Error otherwise.
+    pub fn new() -> Result<Self, Error> {
+        // Parse the CLI
+        let args = Arguments::parse();
+
+        // Let from_path() for the rest
+        Self::from_path(&args.config_path)
+    }
+
     /// Constructor for the Config, which reads the file from the given path on the disk.
     /// 
-    /// **Generic types**
-    ///  * `P`: The Path-like type of the configuration file location.
+    /// # Generic types
+    ///  - `P`: The Path-like type of the configuration file location.
     /// 
-    /// **Arguments**
-    ///  * `path`: The path to the configuration file to read.
+    /// # Arguments
+    ///  - `path`: The path to the configuration file to read.
     /// 
-    /// **Returns**  
+    /// # Returns
     /// The new Config instance on success, or an Error otherwise.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         // Convert the path-like to a path
