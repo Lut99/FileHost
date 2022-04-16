@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:56:29
  * Last edited:
- *   31 Mar 2022, 18:28:22
+ *   16 Apr 2022, 13:20:51
  * Auto updated?
  *   Yes
  *
@@ -12,22 +12,21 @@
  *   Entrypoint to the FileHost server/
 **/
 
-use clap::Parser;
+use std::os::unix::net::UnixStream;
+
 use log::info;
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use systemd_journal_logger::{connected_to_journal, init_with_extra_fields};
 
-use filehost_srv::config::{Arguments, Config};
+use filehost_srv::config::Config;
 
 
 /***** ENTRYPOINT *****/
 fn main() {
-    // Get the arguments
-    let args = Arguments::parse();
     // Use the path specified there to read the config
-    let config = match Config::from_path(&args.config_path) {
+    let config = match Config::new() {
         Ok(config) => config,
-        Err(err)   => { eprintln!("Could not load configuration file '{}': {}", args.config_path.display(), err); std::process::exit(1); }  
+        Err(err)   => { eprintln!("Could not load configuration file: {}", err); std::process::exit(1); }  
     };
 
     // Prepare the logger(s)
@@ -47,5 +46,8 @@ fn main() {
 
 
     // Open a connection to the unix socket
-    
+    let mut stream = match UnixStream::connect(&config.socket_path) {
+        Ok(stream) => stream,
+        Err(err)   => { error!("Could not connect to socket '{}': {}", config.socket_path.display(), err); std::process::exit(1); }
+    };
 }
