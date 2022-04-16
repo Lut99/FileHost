@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Lut99"]
 
+[[bin]]
+name = "filehostd"
+path = "src/main.rs"
+
 [dependencies]
-clap = { version = "3.1.6", features = ["derive"] }
+clap = { version = "3.1.6", features = ["derive", "env"] }
 dirs-2 = "3.0.1"
 log = { version = "0.4.16", features = ["std", "serde"] }
 serde = "1.0.136"

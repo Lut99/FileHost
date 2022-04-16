@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:56:29
  * Last edited:
- *   16 Apr 2022, 13:20:51
+ *   16 Apr 2022, 16:48:23
  * Auto updated?
  *   Yes
  *
@@ -14,7 +14,7 @@
 
 use std::os::unix::net::UnixStream;
 
-use log::info;
+use log::{debug, error, info};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use systemd_journal_logger::{connected_to_journal, init_with_extra_fields};
 
@@ -42,6 +42,7 @@ fn main() {
             .unwrap_or_else(|err| panic!("Could not create stderr logger: {}", err));
     }
     info!("Initializing FileHost Server v{}", env!("CARGO_PKG_VERSION"));
+    debug!("Config path: '{}'", config.path.display());
 
 
 

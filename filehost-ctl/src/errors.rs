@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:34:34
  * Last edited:
- *   30 Mar 2022, 19:35:15
+ *   16 Apr 2022, 16:41:55
  * Auto updated?
  *   Yes
  *
@@ -17,4 +17,3 @@ use std::fmt::{Display, Formatter, Result as FResult};
 
 
 /***** ERRORS *****/
-
