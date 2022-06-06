@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:34:34
  * Last edited:
- *   06 Jun 2022, 13:09:18
+ *   06 Jun 2022, 15:32:49
  * Auto updated?
  *   Yes
  *
@@ -22,10 +22,10 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub enum CtlError {
     /// Failed to create a new socket.
-    SocketCreateError{ err: nix::errno::Errno },
-    /// Failed to connect to the given socket.
-    SocketConnectError{ path: PathBuf, err: nix::errno::Errno },
+    SocketConnectError{ addr: PathBuf, err: std::io::Error },
 
+    /// Could not read from the server stream.
+    SocketReadError{ err: std::io::Error },
     /// Could not write to the server stream.
     SocketWriteError{ err: std::io::Error },
     /// Could not flush the server stream.
@@ -37,11 +37,11 @@ impl Display for CtlError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use CtlError::*;
         match self {
-            SocketCreateError{ err }        => write!(f, "Could not create Unix socket: {}", err),
-            SocketConnectError{  path, err} => write!(f, "Could not connect to server socket '{}': {}", path.display(), err),
+            SocketConnectError{ addr, err } => write!(f, "Could not create & connect Unix socket to '{}': {}", addr.display(), err),
 
-            SocketWriteError{ err }        => write!(f, "Could not write to server socket: {}", err),
-            SocketFlushError{ err }        => write!(f, "Could not flush server socket: {}", err),
+            SocketReadError{ err }  => write!(f, "Could not read from server socket: {}", err),
+            SocketWriteError{ err } => write!(f, "Could not write to server socket: {}", err),
+            SocketFlushError{ err } => write!(f, "Could not flush server socket: {}", err),
         }
     }
 }

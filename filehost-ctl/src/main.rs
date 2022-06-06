@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:32:15
  * Last edited:
- *   06 Jun 2022, 13:21:03
+ *   06 Jun 2022, 15:33:38
  * Auto updated?
  *   Yes
  *
@@ -12,18 +12,17 @@
  *   Entrypoint to the CTL executable.
 **/
 
-use std::io::{BufWriter, Write};
-use std::net::UdpSocket;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
 
 use clap::Parser;
 use log::{debug, error, info, LevelFilter};
-use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, SockProtocol, UnixAddr};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 pub use filehost_ctl::errors::CtlError as Error;
 use filehost_ctl::cli::{Action, Arguments};
 use filehost_spc::config::Config;
+use filehost_spc::ctl_messages::{HEALTH_REPLY, Opcode};
 
 
 // /***** HELPER MACROS *****/
@@ -76,20 +75,11 @@ fn main() {
 
 
     // Connect to the Unix socket
-    debug!("Creating Unix socket...");
-    let sock: RawFd = match socket(AddressFamily::Unix, SockType::Datagram, SockFlag::empty(), None) {
-        Ok(sock) => sock,
-        Err(err) => { error!("{}", Error::SocketCreateError{ err }); std::process::exit(1); }
-    };
     debug!("Connecting to: {}...", &config.socket_path.display());
-    if let Err(err) = connect(sock, &UnixAddr::new(&config.socket_path).unwrap()) {
-        error!("{}", Error::SocketConnectError{ path: config.socket_path, err });
-        std::process::exit(1);
-    }
-
-    // Wrap it in a stream
-    let conn: UdpSocket = unsafe { UdpSocket::from_raw_fd(sock) };
-    debug!("Connection success");
+    let mut conn = match UnixStream::connect(&config.socket_path) {
+        Ok(conn) => conn,
+        Err(err) => { error!("{}", Error::SocketConnectError{ addr: config.socket_path, err }); std::process::exit(1); }
+    };
 
 
 
@@ -99,8 +89,21 @@ fn main() {
             info!("Checking server health status...");
 
             // Send a message to the server
-            debug!("Sending 'Hello, world!' to server...");
-            if let Err(err) = conn.send("Hello, world!".as_ref()) { error!("{}", Error::SocketWriteError{ err }); }
+            debug!("Sending '{:?}' to server...", Opcode::Health);
+            if let Err(err) = conn.write(&[ Opcode::Health as u8 ]) { error!("{}", Error::SocketWriteError{ err }); std::process::exit(1); }
+
+            // Wait for a response
+            let mut buffer: [u8; HEALTH_REPLY.len()] = [ 0; HEALTH_REPLY.len() ];
+            if let Err(err) = conn.read(&mut buffer) { error!("{}", Error::SocketReadError{ err }); std::process::exit(1); }
+
+            // Compare it
+            debug!("Checking server reply...");
+            if buffer != HEALTH_REPLY {
+                error!("Server replied, but with incorrect response:\n\n    Expected:\n     > {:?}\n\n    Got:\n     > {:?}\n", HEALTH_REPLY, buffer);
+            }
+
+            // Otherwise, success
+            println!("Server OK");
         },
     }
 

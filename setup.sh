@@ -5,7 +5,7 @@
 # Created:
 #   16 Apr 2022, 14:48:08
 # Last edited:
-#   06 Jun 2022, 12:05:33
+#   06 Jun 2022, 15:00:33
 # Auto updated?
 #   Yes
 #
@@ -412,7 +412,7 @@ Description=Socket for local CTL communication for the FileHost server.
 AssertPathExists=$(dirname "$socket")
 
 [Socket]
-ListenDatagram=$socket
+ListenStream=$socket
 
 [Install]
 WantedBy=sockets.target

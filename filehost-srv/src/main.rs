@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:56:29
  * Last edited:
- *   06 Jun 2022, 13:28:21
+ *   06 Jun 2022, 15:34:05
  * Auto updated?
  *   Yes
  *
@@ -13,9 +13,9 @@
 **/
 
 use std::fs::File;
-use std::io::{BufReader, Read};
-use std::net::UdpSocket;
+use std::io::{BufReader, Read, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -25,9 +25,9 @@ use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use systemd::daemon;
 use systemd_journal_logger::{connected_to_journal, init_with_extra_fields};
 
-use filehost_spc::config::Config;
-
 pub use filehost_srv::errors::ServerError as Error;
+use filehost_spc::config::Config;
+use filehost_spc::ctl_messages::{BUFFER_SIZE, HEALTH_REPLY, Opcode};
 
 
 /***** CLI *****/
@@ -102,7 +102,7 @@ fn run(config_origin: String, handle: Box<dyn Read>) -> Option<Box<dyn Read>> {
     // Open a stream around it
     if fds.len() != 1 { panic!("Got more file descriptors than bargained for??? (got {}, expected 1)", fds.len()) }
     let ctl_fd: RawFd = fds.iter().next().unwrap();
-    let ctl_stream: UdpSocket = unsafe { UdpSocket::from_raw_fd(ctl_fd) };
+    let ctl_socket: UnixListener = unsafe { UnixListener::from_raw_fd(ctl_fd) };
 
     // Next, open a stream around the network socket
     /* TBD */
@@ -129,8 +129,14 @@ fn run(config_origin: String, handle: Box<dyn Read>) -> Option<Box<dyn Read>> {
         for fd in errorfds.fds(None) {
             // Switch on the FD used
             if fd == ctl_fd {
-                // Check for any errors
-                error!("{}", Error::FdError{ what: "CTL", fd });
+                // Get the underlying error
+                let err = match ctl_socket.take_error() {
+                    Ok(err)  => err,
+                    Err(err) => { error!("Could not get CTL socket error: {}", err); continue; }
+                };
+
+                // Print it
+                error!("{}", Error::CtlSocketError{ fd, err: err.unwrap_or_else(|| panic!("No error found, but the file descriptor did awake on an error")) });
                 std::process::exit(1);
 
             } else {
@@ -142,17 +148,43 @@ fn run(config_origin: String, handle: Box<dyn Read>) -> Option<Box<dyn Read>> {
         for fd in readfds.fds(None) {
             // Switch on the FD used
             if fd == ctl_fd {
-                debug!("New data available on CTL stream");
+                info!("New data available on CTL stream");
 
-                // Read it
-                let mut buffer: [u8; 1024] = [0; 1024];
-                let msg_len: usize = match ctl_stream.recv(&mut buffer) {
+                // Accept the connection
+                debug!("Connecting...");
+                let (mut stream, address) = match ctl_socket.accept() {
+                    Ok(res)  => res,
+                    Err(err) => { error!("{}", Error::StreamAcceptError{ what: "CTL", err }); continue; }
+                };
+
+                // Wrap in an SSL tunnel
+                /* TBD */
+                debug!("Established connection with '{:?}'", address);
+
+                // Read the first opcode
+                let mut opcode: [u8; 1] = [ 0 ];
+                let msg_len: usize = match stream.read(&mut opcode) {
                     Ok(msg_len) => msg_len,
                     Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
                 };
+                if msg_len == 0 { error!("{}", Error::EmptyStream{ what: "CTL" }); continue; }
 
-                // Simply print whatever they send us
-                info!("Message: '{}'", String::from_utf8_lossy(&buffer[..msg_len]).to_string());
+                // Cast the opcode
+                let opcode = match Opcode::try_from(opcode[0]) {
+                    Ok(opcode) => opcode,
+                    Err(err)   => { error!("{}", err); continue; }  
+                };
+
+                // Switch on the opcode
+                match opcode {
+                    Opcode::Health => {
+                        // Send the agreed upon constant back
+                        if let Err(err) = stream.write(&HEALTH_REPLY) { error!("{}", Error::StreamWriteError{ what: "CTL", err }); continue; }
+
+                        // That's it for health
+                        debug!("Handled Health status update");
+                    },
+                }
 
                 // Done
 

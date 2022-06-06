@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:34:34
  * Last edited:
- *   06 Jun 2022, 13:25:14
+ *   06 Jun 2022, 15:06:30
  * Auto updated?
  *   Yes
  *
@@ -29,12 +29,19 @@ pub enum ServerError {
 
     /// Could not wait for any socket to become available.
     SelectError{ err: nix::Error },
+    /// The CTL socket stream has errored.
+    CtlSocketError{ fd: RawFd, err: std::io::Error },
     /// Some file descriptor has become invalid
     FdError{ what: &'static str, fd: RawFd },
+
     /// Could not accept a new connection.
-    AcceptError{ what: &'static str, err: std::io::Error },
+    StreamAcceptError{ what: &'static str, err: std::io::Error },
+    /// The given stream was notified but empty.
+    EmptyStream{ what: &'static str },
     /// Could not read from the given stream.
     StreamReadError{ what: &'static str, err: std::io::Error },
+    /// Could not write to the given stream.
+    StreamWriteError{ what: &'static str, err: std::io::Error },
 }
 
 impl Display for ServerError {
@@ -46,9 +53,13 @@ impl Display for ServerError {
             ListenFdsFailure{ err } => write!(f, "Could not get list of file descriptors: {}", err),
 
             SelectError{ err }            => write!(f, "Could not select on sockets: {}", err),
+            CtlSocketError{ fd, err }     => write!(f, "An error has occurred on the CTL socket ({}): {}", fd, err),
             FdError{ what, fd }           => write!(f, "{} file descriptor ({}) has become invalid", what, fd),
-            AcceptError{ what, err }      => write!(f, "Could not accept new connection on {} stream: {}", what, err),
-            StreamReadError{ what, err }  => write!(f, "Could not read from {} stream: {}", what, err),
+
+            StreamAcceptError{ what, err } => write!(f, "Could not accept new connection on {} stream: {}", what, err),
+            EmptyStream{ what }            => write!(f, "{} stream is woken up but empty", what),
+            StreamReadError{ what, err }   => write!(f, "Could not read from {} stream: {}", what, err),
+            StreamWriteError{ what, err }  => write!(f, "Could not write to {} stream: {}", what, err),
         }
     }
 }
