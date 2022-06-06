@@ -5,7 +5,7 @@
 # Created:
 #   16 Apr 2022, 14:48:08
 # Last edited:
-#   16 Apr 2022, 17:08:40
+#   06 Jun 2022, 12:05:33
 # Auto updated?
 #   Yes
 #
@@ -332,7 +332,7 @@ fi
 echo ""
 echo "*** Setup script for FileHost project ***"
 echo "Script version: $SCRIPT_VERSION"
-echo "Installing FileHost version: $version"
+echo "Running for FileHost version: $version"
 echo ""
 
 
@@ -391,15 +391,17 @@ EOT
     cat <<EOT > "$SERVICE_ENTRY"
 [Unit]
 Description=Simple server that serves packages of files that are too large to store in git.
+After=network.target filesystemd.socket
+Requires=$SOCKET_ENTRY_NAME
 
 [Service]
 User=$USER
 ExecStart=$server_bin
 Restart=always
 Environment="CONFIG_PATH=$config"
-Requires=$SOCKET_ENTRY_NAME
 
 [Install]
+Also=$SERVICE_ENTRY_NAME
 WantedBy=multi-user.target
 EOT
 
@@ -411,6 +413,9 @@ AssertPathExists=$(dirname "$socket")
 
 [Socket]
 ListenDatagram=$socket
+
+[Install]
+WantedBy=sockets.target
 EOT
 
     echo "Enabling server in systemd..."
@@ -435,7 +440,10 @@ else
     echo " > Server binary location: $server_bin"
 
     echo "Removing server from systemd..."
+    systemctl stop "$SERVICE_ENTRY_NAME"
+    systemctl stop "$SOCKET_ENTRY_NAME"
     systemctl disable "$SERVICE_ENTRY_NAME"
+    systemctl disable "$SOCKET_ENTRY_NAME"
 
     echo "Removing systemd socket entry at '$SOCKET_ENTRY'..."
     rm -f "$SOCKET_ENTRY"
