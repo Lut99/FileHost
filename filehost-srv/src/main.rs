@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:56:29
  * Last edited:
- *   06 Jun 2022, 15:34:05
+ *   07 Jun 2022, 12:25:38
  * Auto updated?
  *   Yes
  *
@@ -13,11 +13,12 @@
 **/
 
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{Cursor, BufReader, Read, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 
+use byteorder::ReadBytesExt;
 use clap::Parser;
 use log::{debug, error, info, warn};
 use nix::sys::select::{FdSet, select};
@@ -27,7 +28,7 @@ use systemd_journal_logger::{connected_to_journal, init_with_extra_fields};
 
 pub use filehost_srv::errors::ServerError as Error;
 use filehost_spc::config::Config;
-use filehost_spc::ctl_messages::{BUFFER_SIZE, HEALTH_REPLY, Opcode};
+use filehost_spc::ctl_messages::{ByteOrder, HEALTH_REPLY, Opcode};
 
 
 /***** CLI *****/
@@ -55,11 +56,12 @@ fn main() {
     };
 
     // Now pass everything to the 'run' function to handle the rest (and allow reloads with different config files).
+    let mut origin = args.config_path.display().to_string();
     loop {
         // Call run
-        match run(args.config_path.display().to_string(), handle) {
-            Some(new_handle) => { handle = new_handle; },
-            None             => { break; },
+        match run(origin, handle) {
+            Some((new_origin, new_handle)) => { origin = new_origin; handle = new_handle; },
+            None                           => { break; },
         };
     }
 
@@ -69,9 +71,9 @@ fn main() {
 
 
 /// Actually runs the daemon. The only reason this is here is to allow reloading easily.
-fn run(config_origin: String, handle: Box<dyn Read>) -> Option<Box<dyn Read>> {
+fn run(config_origin: String, mut handle: Box<dyn Read>) -> Option<(String, Box<dyn Read>)> {
     // Read the config file
-    let config = match Config::from_reader(handle) {
+    let mut config = match Config::from_reader(handle) {
         Ok(config) => config,
         Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: config_origin, err }); std::process::exit(1); }
     };
@@ -182,6 +184,48 @@ fn run(config_origin: String, handle: Box<dyn Read>) -> Option<Box<dyn Read>> {
                         if let Err(err) = stream.write(&HEALTH_REPLY) { error!("{}", Error::StreamWriteError{ what: "CTL", err }); continue; }
 
                         // That's it for health
+                        debug!("Handled Health status update");
+                    },
+
+
+
+                    Opcode::Reload => {
+                        // Check if a config is given by reading the next byte
+                        let mut config_len: [u8; 2] = [ 0; 2 ];
+                        let msg_len: usize = match stream.read(&mut config_len) {
+                            Ok(msg_len) => msg_len,
+                            Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
+                        };
+                        if msg_len == 0 { error!("{}", Error::MissingConfigSize); continue; }
+
+                        // Read as the agreed upon endian
+                        let config_len: u16 = Cursor::new(config_len).read_u16::<ByteOrder>().unwrap();
+
+                        // Read the config as the new config if told to do so
+                        if config_len > 0 {
+                            // Read the subsequent bytes
+                            let mut bytes: Vec<u8> = vec![ 0; config_len as usize ];
+                            let msg_len: usize = match stream.read(&mut bytes) {
+                                Ok(msg_len) => msg_len,
+                                Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
+                            };
+                            if msg_len != config_len as usize { error!("{}", Error::IncorrectConfigSize{ got: msg_len, expected: config_len as usize }); continue; }
+
+                            // Use that to read a new config
+                            config = match Config::from_bytes(bytes) {
+                                Ok(config) => config,
+                                Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: "CTL".into(), err }); std::process::exit(1); }
+                            };
+
+                        } else {
+                            // Use the already given one
+                            config = match Config::from_reader(&mut handle) {
+                                Ok(config) => config,
+                                Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: config_origin, err }); std::process::exit(1); }
+                            };
+                        }
+
+                        // Done
                         debug!("Handled Health status update");
                     },
                 }

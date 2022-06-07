@@ -9,6 +9,7 @@ name = "filehostd"
 path = "src/main.rs"
 
 [dependencies]
+byteorder = "1.4.3"
 clap = { version = "3.1.6", features = ["derive", "env"] }
 dirs-2 = "3.0.1"
 log = { version = "0.4.16", features = ["std", "serde"] }

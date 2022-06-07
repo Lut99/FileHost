@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:34:34
  * Last edited:
- *   06 Jun 2022, 15:06:30
+ *   07 Jun 2022, 12:18:29
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::os::unix::io::RawFd;
+
+use filehost_spc::ctl_messages::Opcode;
 
 
 /***** ERRORS *****/
@@ -42,6 +44,11 @@ pub enum ServerError {
     StreamReadError{ what: &'static str, err: std::io::Error },
     /// Could not write to the given stream.
     StreamWriteError{ what: &'static str, err: std::io::Error },
+
+    /// The given 'Reload' command did not have a config size specified.
+    MissingConfigSize,
+    /// The given config was not the promised amount of bytes.
+    IncorrectConfigSize{ got: usize, expected: usize },
 }
 
 impl Display for ServerError {
@@ -60,6 +67,9 @@ impl Display for ServerError {
             EmptyStream{ what }            => write!(f, "{} stream is woken up but empty", what),
             StreamReadError{ what, err }   => write!(f, "Could not read from {} stream: {}", what, err),
             StreamWriteError{ what, err }  => write!(f, "Could not write to {} stream: {}", what, err),
+
+            MissingConfigSize                    => write!(f, "Received {} without config size", Opcode::Reload),
+            IncorrectConfigSize{ got, expected } => write!(f, "Given config file was said to have {} bytes, but got {}", expected, got),
         }
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:32:15
  * Last edited:
- *   06 Jun 2022, 15:33:38
+ *   07 Jun 2022, 11:58:47
  * Auto updated?
  *   Yes
  *
@@ -100,6 +100,7 @@ fn main() {
             debug!("Checking server reply...");
             if buffer != HEALTH_REPLY {
                 error!("Server replied, but with incorrect response:\n\n    Expected:\n     > {:?}\n\n    Got:\n     > {:?}\n", HEALTH_REPLY, buffer);
+                std::process::exit(1);
             }
 
             // Otherwise, success

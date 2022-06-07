@@ -4,7 +4,7 @@
  * Created:
  *   06 Jun 2022, 14:22:44
  * Last edited:
- *   06 Jun 2022, 15:18:37
+ *   07 Jun 2022, 12:11:12
  * Auto updated?
  *   Yes
  *
@@ -18,10 +18,8 @@ use std::fmt::{Debug, Display, Formatter, Result as FResult};
 
 
 /***** CONSTANTS *****/
-/// Defines the maximum buffer size for the initial UDP datagram.
-/// 
-/// This implies that initial messages carried with the opcode may not be larger than `BUFFER_SIZE` bytes.
-pub const BUFFER_SIZE: usize = 256;
+/// Defines the byte order used when transmitting numbers over sockets.
+pub type ByteOrder = byteorder::BigEndian;
 
 /// Defines the message to be send in response of the health message.
 pub const HEALTH_REPLY: [u8; 1] = [ 42 ];
@@ -60,6 +58,9 @@ impl Error for OpcodeError {}
 pub enum Opcode {
     /// Asks the server if it's alive
     Health = 0,
+
+    /// Reloads the server (restart but not really), possibly with a new config
+    Reload = 1,
 }
 
 impl Debug for Opcode {
@@ -69,12 +70,25 @@ impl Debug for Opcode {
     }
 }
 
+impl Display for Opcode {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use Opcode::*;
+        match self {
+            Health => write!(f, "Opcode::Health"),
+
+            Reload => write!(f, "Opcode::Reload"),
+        }
+    }
+}
+
 impl TryFrom<u8> for Opcode {
     type Error = OpcodeError;
 
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value == u8::from(Opcode::Health) { Ok(Opcode::Health) }
+        else if value == u8::from(Opcode::Reload) { Ok(Opcode::Reload) }
         else { Err(OpcodeError::UnknownValue{ raw: value }) }
     }
 }
