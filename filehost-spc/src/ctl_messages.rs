@@ -4,7 +4,7 @@
  * Created:
  *   06 Jun 2022, 14:22:44
  * Last edited:
- *   07 Jun 2022, 12:11:12
+ *   11 Jun 2022, 11:28:21
  * Auto updated?
  *   Yes
  *
@@ -58,9 +58,6 @@ impl Error for OpcodeError {}
 pub enum Opcode {
     /// Asks the server if it's alive
     Health = 0,
-
-    /// Reloads the server (restart but not really), possibly with a new config
-    Reload = 1,
 }
 
 impl Debug for Opcode {
@@ -76,8 +73,6 @@ impl Display for Opcode {
         use Opcode::*;
         match self {
             Health => write!(f, "Opcode::Health"),
-
-            Reload => write!(f, "Opcode::Reload"),
         }
     }
 }
@@ -88,7 +83,6 @@ impl TryFrom<u8> for Opcode {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value == u8::from(Opcode::Health) { Ok(Opcode::Health) }
-        else if value == u8::from(Opcode::Reload) { Ok(Opcode::Reload) }
         else { Err(OpcodeError::UnknownValue{ raw: value }) }
     }
 }
@@ -99,3 +93,4 @@ impl From<Opcode> for u8 {
         value as u8
     }
 }
+

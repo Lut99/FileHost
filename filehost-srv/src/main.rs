@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 20:56:29
  * Last edited:
- *   07 Jun 2022, 12:25:38
+ *   11 Jun 2022, 15:32:17
  * Auto updated?
  *   Yes
  *
@@ -13,22 +13,26 @@
 **/
 
 use std::fs::File;
-use std::io::{Cursor, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 
-use byteorder::ReadBytesExt;
 use clap::Parser;
 use log::{debug, error, info, warn};
 use nix::sys::select::{FdSet, select};
+use rustls::{OwnedTrustAnchor, RootCertStore};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use systemd::daemon;
 use systemd_journal_logger::{connected_to_journal, init_with_extra_fields};
 
-pub use filehost_srv::errors::ServerError as Error;
 use filehost_spc::config::Config;
 use filehost_spc::ctl_messages::{ByteOrder, HEALTH_REPLY, Opcode};
+use filehost_spc::login::ROOT_ID;
+
+pub use filehost_srv::errors::ServerError as Error;
+use filehost_srv::users::{User, Users};
+use filehost_srv::ssl::SSLConfig;
 
 
 /***** CLI *****/
@@ -50,32 +54,14 @@ fn main() {
     let args = Args::parse();
 
     // Open the file in buffered mode
-    let mut handle: Box<dyn Read> = match File::open(&args.config_path) {
-        Ok(handle) => Box::new(BufReader::new(handle)),
+    let handle: BufReader<File> = match File::open(&args.config_path) {
+        Ok(handle) => BufReader::new(handle),
         Err(err)   => { eprintln!("ERROR: Could not open config file '{}': {}", args.config_path.display(), err); std::process::exit(1); }
     };
-
-    // Now pass everything to the 'run' function to handle the rest (and allow reloads with different config files).
-    let mut origin = args.config_path.display().to_string();
-    loop {
-        // Call run
-        match run(origin, handle) {
-            Some((new_origin, new_handle)) => { origin = new_origin; handle = new_handle; },
-            None                           => { break; },
-        };
-    }
-
-    // Done
-}
-
-
-
-/// Actually runs the daemon. The only reason this is here is to allow reloading easily.
-fn run(config_origin: String, mut handle: Box<dyn Read>) -> Option<(String, Box<dyn Read>)> {
     // Read the config file
-    let mut config = match Config::from_reader(handle) {
+    let config = match Config::from_reader(handle) {
         Ok(config) => config,
-        Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: config_origin, err }); std::process::exit(1); }
+        Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ path: args.config_path, err }); std::process::exit(1); }
     };
 
     // Prepare the logger(s)
@@ -91,7 +77,38 @@ fn run(config_origin: String, mut handle: Box<dyn Read>) -> Option<(String, Box<
             .unwrap_or_else(|err| panic!("Could not create stderr logger: {}", err));
     }
     info!("Initializing FileHost Server v{}", env!("CARGO_PKG_VERSION"));
-    debug!("Config path: '{}'", config_origin);
+    debug!("Config path: '{}'", args.config_path.display());
+
+
+
+    // Read the database file
+    info!("Loading users...");
+    debug!("User database: '{}'", config.user_db.display());
+    let users: Users = match Users::from_file(&config.user_db) {
+        Ok(users) => users,
+        Err(err)  => { error!("{}", Error::UsersParseError{ path: config.user_db, err }); std::process::exit(1); }
+    };
+
+    // Prepare the SSL Config
+    info!("Initializing SSL...");
+    let ssl_conf: SSLConfig = match SSLConfig::new(&config.server_cert, &config.server_key, &users) {
+        Ok(users) => users,
+        Err(err)  => { error!("{}", Error::SSLConfigError{ err }); std::process::exit(1); }  
+    };
+
+
+
+    // Prepare the certificate store
+    info!("Preparing certificate store...");
+    let mut root_store = RootCertStore::empty();
+    debug!("Loading Mozilla certificates...");
+    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+        OwnedTrustAnchor::from_subject_spki_name_constraints(
+            ta.subject,
+            ta.spki,
+            ta.name_constraints,
+        )
+    }));
 
 
 
@@ -148,93 +165,55 @@ fn run(config_origin: String, mut handle: Box<dyn Read>) -> Option<(String, Box<
 
         // Iterate through the triggeted fds which got new data available
         for fd in readfds.fds(None) {
-            // Switch on the FD used
-            if fd == ctl_fd {
-                info!("New data available on CTL stream");
-
-                // Accept the connection
-                debug!("Connecting...");
-                let (mut stream, address) = match ctl_socket.accept() {
-                    Ok(res)  => res,
-                    Err(err) => { error!("{}", Error::StreamAcceptError{ what: "CTL", err }); continue; }
-                };
-
-                // Wrap in an SSL tunnel
-                /* TBD */
-                debug!("Established connection with '{:?}'", address);
-
-                // Read the first opcode
-                let mut opcode: [u8; 1] = [ 0 ];
-                let msg_len: usize = match stream.read(&mut opcode) {
-                    Ok(msg_len) => msg_len,
-                    Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
-                };
-                if msg_len == 0 { error!("{}", Error::EmptyStream{ what: "CTL" }); continue; }
-
-                // Cast the opcode
-                let opcode = match Opcode::try_from(opcode[0]) {
-                    Ok(opcode) => opcode,
-                    Err(err)   => { error!("{}", err); continue; }  
-                };
-
-                // Switch on the opcode
-                match opcode {
-                    Opcode::Health => {
-                        // Send the agreed upon constant back
-                        if let Err(err) = stream.write(&HEALTH_REPLY) { error!("{}", Error::StreamWriteError{ what: "CTL", err }); continue; }
-
-                        // That's it for health
-                        debug!("Handled Health status update");
-                    },
-
-
-
-                    Opcode::Reload => {
-                        // Check if a config is given by reading the next byte
-                        let mut config_len: [u8; 2] = [ 0; 2 ];
-                        let msg_len: usize = match stream.read(&mut config_len) {
-                            Ok(msg_len) => msg_len,
-                            Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
-                        };
-                        if msg_len == 0 { error!("{}", Error::MissingConfigSize); continue; }
-
-                        // Read as the agreed upon endian
-                        let config_len: u16 = Cursor::new(config_len).read_u16::<ByteOrder>().unwrap();
-
-                        // Read the config as the new config if told to do so
-                        if config_len > 0 {
-                            // Read the subsequent bytes
-                            let mut bytes: Vec<u8> = vec![ 0; config_len as usize ];
-                            let msg_len: usize = match stream.read(&mut bytes) {
-                                Ok(msg_len) => msg_len,
-                                Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
-                            };
-                            if msg_len != config_len as usize { error!("{}", Error::IncorrectConfigSize{ got: msg_len, expected: config_len as usize }); continue; }
-
-                            // Use that to read a new config
-                            config = match Config::from_bytes(bytes) {
-                                Ok(config) => config,
-                                Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: "CTL".into(), err }); std::process::exit(1); }
-                            };
-
-                        } else {
-                            // Use the already given one
-                            config = match Config::from_reader(&mut handle) {
-                                Ok(config) => config,
-                                Err(err)   => { eprintln!("ERROR: {}", Error::ConfigParseError{ origin: config_origin, err }); std::process::exit(1); }
-                            };
-                        }
-
-                        // Done
-                        debug!("Handled Health status update");
-                    },
-                }
-
-                // Done
-
+            // Determine the user for this session
+            let user: &User = if fd == ctl_fd {
+                // The user is the root user
+                users.users.get(&ROOT_ID).expect("No Root user in users database; this should never happen!")
             } else {
-                warn!("Received message from unknown file descriptor '{}'; ignoring", fd);
+                warn!("Unknown file descriptor '{}' is ready for reading; ignoring", fd);
+                continue;
+            };
+
+            // Accept the connection
+            debug!("Accepting new connection...");
+            let (mut stream, address) = match ctl_socket.accept() {
+                Ok(res)  => res,
+                Err(err) => { error!("{}", Error::StreamAcceptError{ what: "CTL", err }); continue; }
+            };
+
+            // Wrap in an SSL tunnel
+            /* TBD */
+            debug!("Established connection with '{:?}'", address);
+
+            // Read the first opcode
+            let mut opcode: [u8; 1] = [ 0 ];
+            let msg_len: usize = match stream.read(&mut opcode) {
+                Ok(msg_len) => msg_len,
+                Err(err)    => { error!("{}", Error::StreamReadError{ what: "CTL", err }); continue; },
+            };
+            if msg_len == 0 { error!("{}", Error::EmptyStream{ what: "CTL" }); continue; }
+
+            // Cast the opcode
+            let opcode = match Opcode::try_from(opcode[0]) {
+                Ok(opcode) => opcode,
+                Err(err)   => { error!("{}", err); continue; }  
+            };
+
+            // Switch on the opcode
+            match opcode {
+                Opcode::Health => {
+                    // Send the agreed upon constant back
+                    if let Err(err) = stream.write(&HEALTH_REPLY) { error!("{}", Error::StreamWriteError{ what: "CTL", err }); continue; }
+
+                    // That's it for health
+                    debug!("Handled Health status update");
+                },
             }
+
+            // Done
         }
     }
+
+    // Done
 }
+

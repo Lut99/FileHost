@@ -4,7 +4,7 @@
  * Created:
  *   30 Mar 2022, 19:32:50
  * Last edited:
- *   06 Jun 2022, 11:11:12
+ *   11 Jun 2022, 13:30:37
  * Auto updated?
  *   Yes
  *
@@ -14,3 +14,7 @@
 
 /// Module that collects the errors in the crate.
 pub mod errors;
+/// Modules that does the complicated SSL junk.
+pub mod ssl;
+/// Modules that interacts with some user database.
+pub mod users;

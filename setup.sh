@@ -5,7 +5,7 @@
 # Created:
 #   16 Apr 2022, 14:48:08
 # Last edited:
-#   06 Jun 2022, 15:00:33
+#   11 Jun 2022, 15:37:00
 # Auto updated?
 #   Yes
 #
@@ -40,6 +40,8 @@ SERVER_BIN="/usr/sbin/filehostd"
 SOCKET="/run/filehost/ctl.sock"
 # The default config location
 CONFIG="/etc/filehost/config.json"
+# The default user database location
+USERDB="/etc/filehost/users.json"
 
 
 
@@ -53,7 +55,10 @@ ctl_bin="$CTL_BIN"
 server_bin="$SERVER_BIN"
 socket="$SOCKET"
 config="$CONFIG"
-mode="install"
+userdb="$USERDB"
+mode=""
+cert=""
+key=""
 version="latest"
 
 # Iterate over the arguments
@@ -92,16 +97,22 @@ for arg in "$@"; do
                 # Get the next argument as the value
                 state="config"
 
+            elif [[ "$arg" == "-u" || "$arg" == "--userdb" ]]; then
+                # Get the next argument as the value
+                state="userdb"
+
             elif [[ "$arg" == '-v' || "$arg" == "--version" ]]; then
                 # Get the next argument as the value
                 state="version"
 
             elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
                 # Show the help string
-                echo "Usage: $0 [options] [<mode>]"
+                echo "Usage: $0 [options] <mode> <cert> <key>"
                 echo ""
                 echo "Positionals:"
-                echo "  <mode>            Whether to 'install' or 'uninstall'. Default: 'install'"
+                echo "  <mode>            Whether to 'install' or 'uninstall'."
+                echo "  <cert>            The server-side certificate to use for SSL/TLS connections."
+                echo "  <key>             The server-side private key to use for SSL/TLS connections."
                 echo ""
                 echo "Options:"
                 echo "  -l,--local-ctl <path>"
@@ -124,6 +135,11 @@ for arg in "$@"; do
                 echo "                    Determines the location of the CTL/server configuration"
                 echo "                    file. Can be anywhere, but anything non-default has to be"
                 echo "                    passed on every CTL call. Default: '$CONFIG'"
+                echo "  -u,--userdb <path>"
+                echo "                    Determines the location of the user database file. Default:"
+                echo "                    '$USERDB'"
+                echo "     --server-cert <path>"
+                echo "                    If given, uses an existing "
                 echo "  -v,--version <version>"
                 echo "                    Determines the version of the FileHost to install. Default:"
                 echo "                    'latest'"
@@ -152,6 +168,14 @@ for arg in "$@"; do
 
                 # Set it
                 mode="$arg"
+
+            elif [[ "$pos_i" -eq 1 ]]; then
+                # Set it
+                cert="$arg"
+
+            elif [[ "$pos_i" -eq 2 ]]; then
+                # Set it
+                key="$arg"
 
             else
                 echo "Unknown positional '$arg' at index $pos_i"
@@ -247,6 +271,20 @@ for arg in "$@"; do
         # Reset the state
         state="start"
     
+    elif [[ "$state" == "userdb" ]]; then
+        # Treat options first
+        if [[ accept_options -eq 1 && "$arg" =~ ^- ]]; then
+            echo "Missing value for '--userdb'"
+            error=1
+            continue
+        fi
+
+        # Grab the value
+        userdb="$arg"
+
+        # Reset the state
+        state="start"
+    
     elif [[ "$state" == "version" ]]; then
         # Treat options first
         if [[ accept_options -eq 1 && "$arg" =~ ^- ]]; then
@@ -276,6 +314,12 @@ for arg in "$@"; do
     fi
 done
 
+# Check for missing values
+if [[ -z "$mode" ]]; then
+    echo "No mode specified; nothing to do."
+    exit 0
+fi
+
 # Quit if we errored
 if [[ "$error" -eq 1 ]]; then
     exit 1
@@ -299,6 +343,9 @@ elif [[ "$state" == "socket" ]]; then
     exit 1
 elif [[ "$state" == "config" ]]; then
     echo "Missing value for '--config'"
+    exit 1
+elif [[ "$state" == "userdb" ]]; then
+    echo "Missing value for '--userdb'"
     exit 1
 elif [[ "$state" == "version" ]]; then
     echo "Missing value for '--version'"
@@ -367,6 +414,11 @@ if [[ "$mode" == "install" ]]; then
     cat <<EOT > "$config"
 {
     "log_level": "DEBUG",
+
+    "user_db": "$userdb",
+    "server_cert": "$cert",
+    "server_key": "$key",
+
     "socket_path": "$socket",
     "listen_addr": "127.0.0.1:8719",
 
@@ -377,7 +429,14 @@ if [[ "$mode" == "install" ]]; then
 }
 EOT
 
-    echo "Creating new user '$USER'..."
+    echo "Generating '$userdb'..."
+    cat <<EOT > "$userdb"
+{
+    "users": {}
+}
+EOT
+
+    echo "Creating new system user '$USER'..."
     useradd "$USER"
     res=$?
     if [[ "$res" -eq 0 ]]; then
@@ -386,6 +445,12 @@ EOT
     else
         echo " > User already exists"
     fi
+
+    echo "Fixing config files permissions..."
+    chown "$(id -u "$USER"):$(id -g "$USER")" "$config"
+    chown "$(id -u "$USER"):$(id -g "$USER")" "$userdb"
+    chmod 644 "$config"
+    chmod 600 "$userdb"
 
     echo "Generating systemd service entry to '$SERVICE_ENTRY'..."
     cat <<EOT > "$SERVICE_ENTRY"
@@ -436,8 +501,11 @@ else
     ctl_bin=$(python3 -c "import json; h = open(\"$config\", \"r\"); print(json.load(h)[\"locations\"][\"ctl\"]); h.close()") || exit $?
     server_bin=$(python3 -c "import json; h = open(\"$config\", \"r\"); print(json.load(h)[\"locations\"][\"server\"]); h.close()") || exit $?
     socket=$(python3 -c "import json; h = open(\"$config\", \"r\"); print(json.load(h)[\"socket_path\"]); h.close()") || exit $?
+    userdb=$(python3 -c "import json; h = open(\"$config\", \"r\"); print(json.load(h)[\"user_db\"]); h.close()") || exit $?
     echo " > CTL binary location: $ctl_bin"
     echo " > Server binary location: $server_bin"
+    echo " > Socket folder: $socket"
+    echo " > User database location: $userdb"
 
     echo "Removing server from systemd..."
     systemctl stop "$SERVICE_ENTRY_NAME"
@@ -451,16 +519,19 @@ else
     echo "Removing systemd service entry at '$SERVICE_ENTRY'..."
     rm -f "$SERVICE_ENTRY"
 
-    echo "Removing user '$USER'..."
+    echo "Removing system user '$USER'..."
     userdel "$USER"
 
-    echo "Deleting config..."
+    echo "Deleting user database '$userdb'..."
+    rm -f "$userdb"
+
+    echo "Deleting config '$config'..."
     rm -f "$config"
 
-    echo "Removing filehostd server binary..."
+    echo "Removing filehostd server binary '$server_bin'..."
     rm -f "$server_bin"
 
-    echo "Removing filehostctl binary..."
+    echo "Removing filehostctl binary '$ctl_bin'..."
     rm -f "$ctl_bin"
 
     echo "Removing directories..."

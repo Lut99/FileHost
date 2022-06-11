@@ -4,7 +4,7 @@
  * Created:
  *   06 Jun 2022, 10:06:15
  * Last edited:
- *   06 Jun 2022, 11:49:21
+ *   11 Jun 2022, 15:30:25
  * Auto updated?
  *   Yes
  *
@@ -94,6 +94,13 @@ impl error::Error for Error {}
 pub struct Config {
     /// The log level to apply.
     pub log_level   : LevelFilter,
+
+    /// The location of the users database.
+    pub user_db     : PathBuf,
+    /// The location of the server SSL certificate.
+    pub server_cert : PathBuf,
+    /// The location of the server private key.
+    pub server_key  : PathBuf,
 
     /// The socket path to listen for.
     pub socket_path : PathBuf,
@@ -325,17 +332,5 @@ impl Config {
     pub fn resolve(&mut self) -> Result<(), Error> {
         // Nothing for now
         Ok(())
-    }
-}
-
-impl Default for Config {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            log_level : LevelFilter::Debug,
-
-            socket_path : PathBuf::from("/run/filehost/ctl.sock"),
-            listen_addr : String::from("127.0.0.1:8719"),
-        }
     }
 }
