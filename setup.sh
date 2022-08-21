@@ -5,7 +5,7 @@
 # Created:
 #   16 Apr 2022, 14:48:08
 # Last edited:
-#   11 Jun 2022, 15:37:00
+#   21 Aug 2022, 11:06:48
 # Auto updated?
 #   Yes
 #
@@ -57,8 +57,6 @@ socket="$SOCKET"
 config="$CONFIG"
 userdb="$USERDB"
 mode=""
-cert=""
-key=""
 version="latest"
 
 # Iterate over the arguments
