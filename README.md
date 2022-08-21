@@ -7,12 +7,8 @@ For example, it is meant as a way to easily share and download the assets for a 
 
 ## Installation
 ### Compilation
-To compile the project from source, install [rustup](https://rustup.rs) first. Then, you should install the following packages:
-- On Ubuntu:
-  - ```
-    sudo apt-get install pkg-config libssl-dev libsystemd-dev
-    ```
-- On Arch Linux:
-  - ```
-    sudo pacman -Syu pkg-config
-    ```
+To compile the project from source, install [rustup](https://rustup.rs) first. Then, run
+```bash
+cargo build --release
+```
+in the project's root to compile all services.

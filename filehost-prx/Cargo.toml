@@ -1,0 +1,8 @@
+[package]
+name = "filehost-prx"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+warp = { version = "0.3.2", features = ["tls"] }
