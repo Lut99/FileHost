@@ -1,5 +1,7 @@
 [workspace]
 members = [
     "filehost-spc",
+
     "filehost-auth",
+    "filehost-prx",
 ]
